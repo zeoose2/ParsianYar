@@ -1,38 +1,97 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { Info } from "lucide-react";
-import { toast } from "sonner";
-import { SiteLayout } from "@/components/layout/site-layout";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { absoluteUrl } from "@/lib/site";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
-const title = "ورود و ثبت‌نام | پارسیان‌یار";
-const description = "برای دریافت گزارش کامل کسب‌وکار، ایجاد سازمان، دعوت همکاران و بارگذاری داده مالی، به حساب پارسیان‌یار وارد شوید.";
+export const Route = createFileRoute("/auth")({ component: AuthPage });
 
-export const Route = createFileRoute("/auth")({
-  head: () => ({ meta: [{ title }, { name: "description", content: description }, { property: "og:title", content: title }, { property: "og:description", content: description }], links: [{ rel: "canonical", href: absoluteUrl("/auth") }] }),
-  component: AuthPage,
-});
+type Mode = "login" | "register";
 
 function AuthPage() {
-  function notReady() {
-    toast("احراز هویت در مرحله بعدی فعال می‌شود", { description: "در این فاز، رابط کاربری آماده شده و اتصال امن حساب‌ها در گام بعد انجام می‌شود." });
+  const navigate = useNavigate();
+  const [mode, setMode] = useState<Mode>("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (mounted && data.session) navigate({ to: "/dashboard" });
+    });
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) navigate({ to: "/dashboard" });
+    });
+    return () => { mounted = false; data.subscription.unsubscribe(); };
+  }, [navigate]);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true); setError(""); setMessage("");
+    try {
+      if (mode === "login") {
+        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        if (error) throw error;
+        return;
+      }
+      if (password.length < 8) throw new Error("گذرواژه باید حداقل ۸ کاراکتر باشد.");
+      if (!companyName.trim()) throw new Error("نام شرکت را وارد کنید.");
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(), password,
+        options: { data: { full_name: fullName.trim(), company_name: companyName.trim() } },
+      });
+      if (error) throw error;
+      if (data.user) {
+        const userId = data.user.id;
+        await supabase.from("profiles").upsert({ user_id: userId, full_name: fullName.trim(), company_name: companyName.trim() }, { onConflict: "user_id" });
+        if (data.session) {
+          const { data: company, error: companyError } = await supabase.from("companies").insert({ owner_id: userId, name: companyName.trim() }).select("id").single();
+          if (companyError) throw companyError;
+          await supabase.from("company_members").insert({ company_id: company.id, user_id: userId, role: "ceo", accepted_at: new Date().toISOString() });
+          await supabase.from("user_roles").insert({ user_id: userId, role: "ceo" });
+          navigate({ to: "/dashboard" });
+        } else {
+          setMessage("حساب ایجاد شد. لطفاً ایمیل خود را تأیید کنید و سپس وارد شوید.");
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "عملیات ناموفق بود.");
+    } finally { setBusy(false); }
   }
+
+  async function resetPassword() {
+    setError(""); setMessage("");
+    if (!email.trim()) { setError("ابتدا ایمیل خود را وارد کنید."); return; }
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/auth` });
+    if (error) setError(error.message); else setMessage("لینک بازیابی گذرواژه ارسال شد.");
+  }
+
   return (
-    <SiteLayout>
-      <section className="mx-auto max-w-md px-4 py-14 sm:px-6">
-        <nav aria-label="مسیر صفحه" className="text-xs text-muted-foreground"><Link to="/" className="hover:text-foreground">خانه</Link>{" / "}<span className="text-foreground">ورود و ثبت‌نام</span></nav>
-        <h1 className="mt-4 text-2xl font-extrabold">حساب کاربری پارسیان‌یار</h1>
-        <Card className="mt-6 shadow-luxe"><CardHeader><CardTitle className="text-base">خوش آمدید</CardTitle></CardHeader><CardContent>
-          <Tabs defaultValue="login"><TabsList className="grid w-full grid-cols-2"><TabsTrigger value="login">ورود</TabsTrigger><TabsTrigger value="register">ثبت‌نام</TabsTrigger></TabsList>
-          <TabsContent value="login" className="mt-5 grid gap-4"><div className="grid gap-2"><Label htmlFor="login-id">ایمیل یا موبایل</Label><Input id="login-id" placeholder="name@company.ir" /></div><div className="grid gap-2"><Label htmlFor="login-pass">گذرواژه</Label><Input id="login-pass" type="password" placeholder="••••••••" /></div><Button onClick={notReady}>ورود به حساب</Button></TabsContent>
-          <TabsContent value="register" className="mt-5 grid gap-4"><div className="grid gap-2"><Label htmlFor="reg-name">نام و نام خانوادگی</Label><Input id="reg-name" placeholder="مثال: سارا محمدی" /></div><div className="grid gap-2"><Label htmlFor="reg-company">نام سازمان</Label><Input id="reg-company" placeholder="مثال: صنایع پارس" /></div><div className="grid gap-2"><Label htmlFor="reg-id">ایمیل یا موبایل</Label><Input id="reg-id" placeholder="name@company.ir" /></div><Button onClick={notReady}>ایجاد حساب و دریافت گزارش کامل</Button></TabsContent></Tabs>
-          <p className="mt-6 flex items-start gap-2 rounded-xl border border-border bg-surface p-3 text-[11px] leading-6 text-muted-foreground"><Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />بدون ثبت‌نام هم می‌توانید از <Link to="/trial" className="font-bold text-primary hover:underline">ارزیابی رایگان مهمان</Link> استفاده کنید؛ در آن حالت فقط داده نمونه نمایش داده می‌شود.</p>
-        </CardContent></Card>
+    <main dir="rtl" className="min-h-screen bg-background px-4 py-12 text-foreground">
+      <section className="mx-auto max-w-md">
+        <Link to="/" className="text-sm font-semibold text-primary">پارسیان‌یار</Link>
+        <h1 className="mt-6 text-3xl font-extrabold">{mode === "login" ? "ورود به حساب" : "ایجاد حساب پارسیان‌یار"}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">حساب واقعی شما با Supabase مدیریت می‌شود.</p>
+        <form onSubmit={submit} className="mt-8 grid gap-4 rounded-2xl border bg-card p-6 shadow-sm">
+          {mode === "register" && <>
+            <label className="grid gap-2 text-sm">نام و نام خانوادگی<input className="h-11 rounded-lg border px-3" value={fullName} onChange={e => setFullName(e.target.value)} /></label>
+            <label className="grid gap-2 text-sm">نام شرکت<input className="h-11 rounded-lg border px-3" value={companyName} onChange={e => setCompanyName(e.target.value)} /></label>
+          </>}
+          <label className="grid gap-2 text-sm">ایمیل<input className="h-11 rounded-lg border px-3" type="email" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" /></label>
+          <label className="grid gap-2 text-sm">گذرواژه<input className="h-11 rounded-lg border px-3" type="password" required value={password} onChange={e => setPassword(e.target.value)} autoComplete={mode === "login" ? "current-password" : "new-password"} /></label>
+          {error && <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm">{error}</div>}
+          {message && <div className="rounded-lg border p-3 text-sm">{message}</div>}
+          <button disabled={busy} className="h-11 rounded-lg bg-primary px-4 font-bold text-primary-foreground disabled:opacity-50">{busy ? "در حال انجام…" : mode === "login" ? "ورود" : "ثبت‌نام و ایجاد شرکت"}</button>
+          {mode === "login" && <button type="button" onClick={resetPassword} className="text-sm text-primary">بازیابی گذرواژه</button>}
+        </form>
+        <button onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); setMessage(""); }} className="mt-5 text-sm font-semibold text-primary">
+          {mode === "login" ? "حساب ندارید؟ ثبت‌نام کنید" : "حساب دارید؟ وارد شوید"}
+        </button>
+        <p className="mt-6 text-xs text-muted-foreground">ارزیابی مهمان همچنان بدون ورود در دسترس است.</p>
       </section>
-    </SiteLayout>
+    </main>
   );
 }
