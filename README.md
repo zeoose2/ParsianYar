@@ -1,15 +1,18 @@
-# ParsianYar AI
+# پارسیان‌یار — ParsianYar AI
 
-نسخه مستقل توسعه پروژه پارسیان‌یار، بر مبنای کد فعلی پروژه Lovable.
+نسخه مستقل توسعه پروژه پارسیان‌یار، بر پایه کد فعلی پروژه Lovable.
 
-## وضعیت
-- Source baseline: Lovable project `140e97b4-495f-4fe1-bed6-8e0a960f209c`
+## وضعیت انتقال
+- مخزن: `zeoose2/ParsianYar`
+- پروژه مادر: Lovable project `140e97b4-495f-4fe1-bed6-8e0a960f209c`
 - Stack: React 19 + TypeScript + TanStack Start/Router + Tailwind + Supabase
-- این مخزن برای ادامه توسعه مستقل، بدون وابستگی به اعتبار Lovable، ایجاد شده است.
-- Lovable به‌عنوان پروژه مادر حفظ می‌شود.
+- Lovable فعلاً به‌عنوان پروژه مادر حفظ می‌شود.
+- GitHub مسیر پشتیبان و توسعه مستقل است.
 
-## برنامه توسعه
-1. انتقال کامل source baseline
+> انتقال کامل source baseline هنوز در حال انجام است؛ این مخزن فعلاً جایگزین نسخه Production نیست.
+
+## فاز جاری
+1. Baseline و ساختار Supabase
 2. احراز هویت واقعی Supabase
 3. ایجاد شرکت و نقش CEO
 4. Multi-company و Role/RLS
@@ -18,4 +21,10 @@
 7. AI Orchestration
 8. پرداخت و انتشار
 
-> هرگز secret یا `.env` واقعی را commit نکنید.
+## محیط
+```text
+VITE_SUPABASE_URL=
+VITE_SUPABASE_PUBLISHABLE_KEY=
+```
+
+هرگز secret/service-role key یا فایل `.env` واقعی را commit نکنید.
